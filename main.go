@@ -150,7 +150,7 @@ func handleTTSRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log request
-	log.Printf("TTS Request: voice=%s, model=%s, format=%s, speed=%.2f, text=%.50s...",
+	log.Printf("TTS Request: voice=%s, model=%s, format=%s, speed=%.2f, text=\"%.50s\"",
 		req.Voice, req.Model, req.ResponseFormat, req.Speed, req.Input)
 
 	// Generate speech

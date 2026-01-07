@@ -4,12 +4,16 @@ import "fmt"
 
 // VoiceMapping maps OpenAI voice names to Supertonic voice style files
 var VoiceMapping = map[string]string{
-	"alloy":  "assets/voice_styles/M1.json",
-	"echo":   "assets/voice_styles/M2.json",
-	"fable":  "assets/voice_styles/F1.json",
-	"onyx":   "assets/voice_styles/F2.json",
-	"nova":   "assets/voice_styles/M3.json",  // Need additional voices
-	"shimmer": "assets/voice_styles/F3.json", // Need additional voices
+	"M1":  "assets/voice_styles/M1.json",
+	"M2":  "assets/voice_styles/M2.json",
+	"M3":  "assets/voice_styles/M3.json",
+	"M4":  "assets/voice_styles/M4.json",
+	"M5":  "assets/voice_styles/M5.json",
+	"F1":  "assets/voice_styles/F1.json",
+	"F2":  "assets/voice_styles/F2.json",
+	"F3":  "assets/voice_styles/F3.json",
+	"F4":  "assets/voice_styles/F4.json",
+	"F5":  "assets/voice_styles/F5.json",
 }
 
 // GetVoicePath returns the Supertonic voice style path for an OpenAI voice name
