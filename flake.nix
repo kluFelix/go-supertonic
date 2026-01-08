@@ -30,10 +30,10 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             bashInteractive
-
             git-lfs
 
             go
+            gopls
             onnxruntime   # 1.23.0 from our overlay
             gomod2nix-pkg # from nix-comunity/gomod2nix-pkg
           ];

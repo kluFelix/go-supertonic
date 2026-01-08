@@ -16,7 +16,7 @@ import (
 	"supertonic-go/tts"
 )
 
-// OpenAI TTS request structure
+// TTSRequest with OpenAI TTS request structure
 type TTSRequest struct {
 	Model          string  `json:"model"`
 	Input          string  `json:"input"`
@@ -25,7 +25,7 @@ type TTSRequest struct {
 	Speed          float64 `json:"speed"`           // 0.25 to 4.0
 }
 
-// API server configuration
+// ServerConfig with API server configuration
 type ServerConfig struct {
 	Port         string
 	OnnxDir      string
@@ -44,7 +44,6 @@ func main() {
 	flag.BoolVar(&config.UseGPU, "use-gpu", false, "Use GPU for inference")
 	flag.IntVar(&config.TotalStep, "total-step", 5, "Number of denoising steps (quality vs speed)")
 	flag.Float64Var(&config.DefaultSpeed, "default-speed", 1.0, "Default speech speed")
-	flag.StringVar(&config.SaveDir, "save-dir", "generated", "Directory for saved audio files")
 	flag.Parse()
 
 	// Initialize ONNX Runtime
@@ -105,6 +104,7 @@ func verifyAssets() error {
 
 // handleRoot provides API documentation
 func handleRoot(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Request to root")
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]interface{}{
 		"message": "Supertonic OpenAI-Compatible TTS API",
@@ -132,6 +132,7 @@ func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 func handleTTSRequest(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST requests
 	if r.Method != http.MethodPost {
+		log.Printf("Invalid method")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -139,6 +140,7 @@ func handleTTSRequest(w http.ResponseWriter, r *http.Request) {
 	// Parse request body
 	var req TTSRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("Invalid JSON")
 		sendError(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -175,7 +177,7 @@ func validateRequest(req *TTSRequest) error {
 	}
 
 	if req.Voice == "" {
-		req.Voice = "alloy" // Default voice
+		req.Voice = "F5" // Default voice
 	}
 
 	if req.Model == "" {
