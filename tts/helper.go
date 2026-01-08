@@ -18,10 +18,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// Available languages for multilingual TTS
+// AvailableLangs for multilingual TTS
 var AvailableLangs = []string{"en", "ko", "es", "pt", "fr"}
 
-// Config structures
+// SpecProcessorConfig for the configuration structure
 type SpecProcessorConfig struct {
 	NFFT      int     `json:"n_fft"`
 	WinLength int     `json:"win_length"`
@@ -506,13 +506,13 @@ func writeWavFile(filename string, audioData []float64, sampleRate int) error {
 
 // Style holds style tensors
 type Style struct {
-	TtlTensor *ort.Tensor[float32]
+	TTLTensor *ort.Tensor[float32]
 	DpTensor  *ort.Tensor[float32]
 }
 
 func (s *Style) Destroy() {
-	if s.TtlTensor != nil {
-		s.TtlTensor.Destroy()
+	if s.TTLTensor != nil {
+		s.TTLTensor.Destroy()
 	}
 	if s.DpTensor != nil {
 		s.DpTensor.Destroy()
@@ -604,7 +604,7 @@ func LoadVoiceStyle(voiceStylePaths []string, verbose bool) (*Style, error) {
 	}
 
 	return &Style{
-		TtlTensor: ttlTensor,
+		TTLTensor: ttlTensor,
 		DpTensor:  dpTensor,
 	}, nil
 }
@@ -711,7 +711,7 @@ func (tts *TextToSpeech) _infer(textList []string, langList []string, style *Sty
 	defer textIDsTensor2.Destroy()
 	textEncOutputs := []ort.Value{nil}
 	err = tts.textEncOrt.Run(
-		[]ort.Value{textIDsTensor2, style.TtlTensor, textMaskTensor},
+		[]ort.Value{textIDsTensor2, style.TTLTensor, textMaskTensor},
 		textEncOutputs,
 	)
 	if err != nil {
@@ -749,7 +749,7 @@ func (tts *TextToSpeech) _infer(textList []string, langList []string, style *Sty
 
 		vectorEstOutputs := []ort.Value{nil}
 		err = tts.vectorEstOrt.Run(
-			[]ort.Value{noisyLatentTensor, textEmbTensor, style.TtlTensor, latentMaskTensor, textMaskTensor2,
+			[]ort.Value{noisyLatentTensor, textEmbTensor, style.TTLTensor, latentMaskTensor, textMaskTensor2,
 				currentStepTensor, totalStepTensor},
 			vectorEstOutputs,
 		)
@@ -860,7 +860,7 @@ func LoadTextToSpeech(onnxDir string, useGPU bool, cfg Config) (*TextToSpeech, e
 	if useGPU {
 		return nil, fmt.Errorf("GPU mode is not supported yet")
 	}
-	fmt.Println("Using CPU for inference\n")
+	fmt.Println("Using CPU for inference")
 
 	// Load models
 	dpPath := filepath.Join(onnxDir, "duration_predictor.onnx")
@@ -1014,7 +1014,7 @@ func loadJSONInt64(filePath string) ([]int64, error) {
 	return result, nil
 }
 
-// Tensor conversion utilities
+// ArrayToTensor provides tensor conversion utilities
 func ArrayToTensor(array [][][]float64, shape []int64) *ort.Tensor[float32] {
 	// Flatten array
 	totalSize := int64(1)

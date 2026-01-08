@@ -13,7 +13,7 @@ import (
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 	ort "github.com/yalue/onnxruntime_go"
-	"supertonic-go/tts"
+	"go-supertonic/tts"
 )
 
 // TTSRequest with OpenAI TTS request structure

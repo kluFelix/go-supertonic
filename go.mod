@@ -1,4 +1,4 @@
-module supertonic-go
+module go-supertonic
 
 go 1.25.5
 
