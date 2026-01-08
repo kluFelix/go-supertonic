@@ -1,0 +1,18 @@
+schema = 3
+
+[mod]
+  [mod."github.com/go-audio/audio"]
+    version = "v1.0.0"
+    hash = "sha256-w2m5EyHOzoWCkfHQggwOGqZPIBUmrzTpF5NzxPwIURU="
+  [mod."github.com/go-audio/riff"]
+    version = "v1.0.0"
+    hash = "sha256-ZPGpi5KYwpPdPzA4tNorCoDmNef39L8OxTk0pd+443E="
+  [mod."github.com/go-audio/wav"]
+    version = "v1.1.0"
+    hash = "sha256-fbbk/qw8VDfB5aiH4cMDTh/Hi6LJI8uVm3ziV+AfOV0="
+  [mod."github.com/yalue/onnxruntime_go"]
+    version = "v1.25.0"
+    hash = "sha256-mocNzwhuSzNIyHZFW2G5W3QQYcd0hd145JBYKLD2nXc="
+  [mod."golang.org/x/text"]
+    version = "v0.27.0"
+    hash = "sha256-VX0rOh6L3qIvquKSGjfZQFU8URNtGvkNvxE7OZtboW8="
