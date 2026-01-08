@@ -42,7 +42,7 @@
 
           # Building the app "the nix way"
           packages.default = pkgs.buildGoModule {
-            pname = "supertonic-tts";
+            pname = "go-supertonic";
             version = "0.1.0";
             src = ./.;
 
@@ -51,7 +51,7 @@
             nativeBuildInputs = with pkgs; [ makeWrapper ];
 
             postInstall = ''
-            wrapProgram $out/bin/supertonic-go \
+            wrapProgram $out/bin/go-supertonic \
               --set ONNXRUNTIME_LIB_PATH ${pkgs.onnxruntime}/lib/libonnxruntime.so \
               --prefix LD_LIBRARY_PATH : ${pkgs.onnxruntime}/lib
             '';
@@ -144,7 +144,7 @@
                     "LD_LIBRARY_PATH=${pkgs.onnxruntime}/lib"
                   ];
 
-                  ExecStart = "${cfg.package}/bin/supertonic-go \
+                  ExecStart = "${cfg.package}/bin/go-supertonic \
                     --port ${toString cfg.port} \
                     --onnx-dir ${cfg.assetsDir}/onnx \
                     --total-step ${toString cfg.totalStep} \
