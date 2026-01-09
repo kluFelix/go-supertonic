@@ -35,8 +35,8 @@ func GetVoicePath(voiceName string) (string, error) {
 	}
 
 	// ToDo: make this path configurable
-	// Check if file exists in /var/lib/supertonic/assets
-	altPath := filepath.Join("/var/lib/supertonic/assets", path)
+	// Check if file exists in /var/lib/supertonic
+	altPath := filepath.Join("/var/lib/supertonic", path)
 	if _, err := os.Stat(altPath); err == nil {
 		return altPath, nil
 	}
