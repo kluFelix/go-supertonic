@@ -28,7 +28,7 @@ type TTSRequest struct {
 // ServerConfig with API server configuration
 type ServerConfig struct {
 	Port         string
-	OnnxDir      string
+	AssetsDir    string
 	UseGPU       bool
 	TotalStep    int
 	DefaultSpeed float64
@@ -39,18 +39,24 @@ var config ServerConfig
 
 func main() {
 	// Parse command-line flags
-	// ToDo: make not only the onnx dir but the entire asset dir configurable
-	// ToDo: configure steps for tts-1-hd?
-	// ToDo: speed configurability is redundant - is configurable via POST request
+	var assetsDir string
 	flag.StringVar(&config.Port, "port", "8880", "Server port")
-	flag.StringVar(&config.OnnxDir, "onnx-dir", "assets/onnx", "Path to ONNX model directory")
+	flag.StringVar(&assetsDir, "assets-dir", "", "Path to assets directory (optional, will auto-detect if not provided)")
 	flag.BoolVar(&config.UseGPU, "use-gpu", false, "Use GPU for inference")
 	flag.IntVar(&config.TotalStep, "total-step", 5, "Number of denoising steps (quality vs speed)")
 	flag.Float64Var(&config.DefaultSpeed, "default-speed", 1.0, "Default speech speed")
 	flag.Parse()
 
+	// Find assets directory
+	var err error
+	config.AssetsDir, err = findAssetsDir(assetsDir)
+	if err != nil {
+		log.Fatalf("Failed to locate assets directory: %v", err)
+	}
+
 	// Initialize ONNX Runtime
 	fmt.Println("=== Supertonic OpenAI-Compatible TTS API ===")
+	fmt.Printf("Using assets directory: %s\n", config.AssetsDir)
 	fmt.Printf("Initializing ONNX Runtime...\n")
 	if err := tts.InitializeONNXRuntime(); err != nil {
 		log.Fatalf("Failed to initialize ONNX Runtime: %v", err)
@@ -78,11 +84,55 @@ func main() {
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
 
-// verifyAssets checks if required model files exist
-func verifyAssets() error {
-	// Check for files in both locations
-	assetDirs := []string{config.OnnxDir, "/var/lib/supertonic/assets/onnx"}
+// findAssetsDir locates the assets directory based on priority:
+// 1. Command-line flag (if provided)
+// 2. System-wide location: /var/lib/supertonic/assets
+// 3. Local directory: ./assets
+func findAssetsDir(cmdLinePath string) (string, error) {
+	// Priority 1: Command line flag
+	if cmdLinePath != "" {
+		info, err := os.Stat(cmdLinePath)
+		if err != nil {
+			return "", fmt.Errorf("specified assets directory not accessible: %s: %w", cmdLinePath, err)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("specified assets directory is not a directory: %s", cmdLinePath)
+		}
+		// Convert to absolute path for consistency
+		absPath, err := filepath.Abs(cmdLinePath)
+		if err != nil {
+			return cmdLinePath, nil // Fallback to original if abs fails
+		}
+		return absPath, nil
+	}
 
+	// Priority 2: System-wide location
+	systemPath := "/var/lib/supertonic/assets"
+	if info, err := os.Stat(systemPath); err == nil && info.IsDir() {
+		absPath, _ := filepath.Abs(systemPath)
+		return absPath, nil
+	}
+
+	// Priority 3: Local directory (relative to working directory)
+	localPath := "./assets"
+	if info, err := os.Stat(localPath); err == nil && info.IsDir() {
+		absPath, _ := filepath.Abs(localPath)
+		return absPath, nil
+	}
+
+	return "", fmt.Errorf("could not find assets directory in any default location. " +
+		"Please specify the path using --assets-dir\n" +
+		"Searched locations:\n" +
+		"  - /var/lib/supertonic/assets\n" +
+		"  - ./assets")
+}
+
+// verifyAssets checks if required model files exist in the determined assets directory
+func verifyAssets() error {
+	onnxDir := filepath.Join(config.AssetsDir, "onnx")
+	voiceStylesDir := filepath.Join(config.AssetsDir, "voice_styles")
+
+	// Check for ONNX model files
 	requiredFiles := []string{
 		"duration_predictor.onnx",
 		"text_encoder.onnx",
@@ -92,36 +142,18 @@ func verifyAssets() error {
 		"unicode_indexer.json",
 	}
 
-	// Check each required file in both directories
 	for _, file := range requiredFiles {
-		found := false
-		for _, dir := range assetDirs {
-			fullPath := filepath.Join(dir, file)
-			if _, err := os.Stat(fullPath); err == nil {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("missing required file: %s", file)
+		path := filepath.Join(onnxDir, file)
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("missing required ONNX file: %s", path)
 		}
 	}
 
-	// Check voice styles
-	for _, voiceFile := range tts.VoiceMapping {
-		// Check if file exists in either location
-		found := false
-		for _, dir := range assetDirs {
-			// Extract just the filename part from the mapping
-			relPath := filepath.Base(voiceFile)
-			fullPath := filepath.Join(dir, "voice_styles", relPath)
-			if _, err := os.Stat(fullPath); err == nil {
-				found = true
-				break
-			}
-		}
-		if !found {
-			log.Printf("Warning: Missing voice style %s", voiceFile)
+	// Check voice style files
+	for voiceName, filename := range tts.VoiceMapping {
+		path := filepath.Join(voiceStylesDir, filename)
+		if _, err := os.Stat(path); err != nil {
+			log.Printf("Warning: Missing voice style %s at %s", voiceName, path)
 		}
 	}
 
@@ -219,7 +251,7 @@ func validateRequest(req *TTSRequest) error {
 	}
 
 	// Validate voice
-	if _, err := tts.GetVoicePath(req.Voice); err != nil {
+	if _, err := tts.GetVoicePath(req.Voice, config.AssetsDir); err != nil {
 		return err
 	}
 
@@ -247,21 +279,21 @@ func validateRequest(req *TTSRequest) error {
 
 // generateSpeech generates speech from the request
 func generateSpeech(req *TTSRequest) ([]byte, error) {
-	// Load config
-	cfg, err := tts.LoadCfgs(config.OnnxDir)
+	// Load config from assets directory
+	cfg, err := tts.LoadCfgs(config.AssetsDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Load TTS components
-	textToSpeech, err := tts.LoadTextToSpeech(config.OnnxDir, config.UseGPU, cfg)
+	// Load TTS components from assets directory
+	textToSpeech, err := tts.LoadTextToSpeech(config.AssetsDir, config.UseGPU, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load TTS: %w", err)
 	}
 	defer textToSpeech.Destroy()
 
 	// Get voice style path
-	voicePath, err := tts.GetVoicePath(req.Voice)
+	voicePath, err := tts.GetVoicePath(req.Voice, config.AssetsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -273,6 +305,7 @@ func generateSpeech(req *TTSRequest) ([]byte, error) {
 	}
 	defer style.Destroy()
 
+	// ToDo: remove hd model option and instead configure steps via http request
 	// Determine quality (model affects steps)
 	totalStep := config.TotalStep
 	if req.Model == "tts-1-hd" {
@@ -280,17 +313,12 @@ func generateSpeech(req *TTSRequest) ([]byte, error) {
 	}
 
 	// Generate speech (language detection could be added here)
-	language := "en" // Default to English
-	// TODO: Add language detection or allow language specification
-
+	language := "en"
 	fmt.Printf("Generating speech (model=%s, steps=%d, speed=%.2f)...\n",
 		req.Model, totalStep, req.Speed)
 
-	var wav []float32
-	var duration float32
-
 	// Generate using the Call method (handles chunking)
-	wav, duration, err = textToSpeech.Call(req.Input, language, style, totalStep, float32(req.Speed), 0.3)
+	wav, duration, err := textToSpeech.Call(req.Input, language, style, totalStep, float32(req.Speed), 0.3)
 	if err != nil {
 		return nil, fmt.Errorf("speech generation failed: %w", err)
 	}
@@ -308,8 +336,6 @@ func generateSpeech(req *TTSRequest) ([]byte, error) {
 // setAudioHeaders sets appropriate HTTP headers for audio responses
 func setAudioHeaders(w http.ResponseWriter, format string) {
 	w.Header().Set("Content-Type", getContentType(format))
-	// Optional: Add CORS headers if needed
-	// w.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
 // getContentType returns MIME type for audio format
@@ -341,17 +367,13 @@ func sendError(w http.ResponseWriter, message string, status int) {
 	})
 }
 
+// ToDo: remove this? Not being used and just adds complexity
 // convertToFormat converts raw audio to requested format
 func convertToFormat(wav []float32, sampleRate int, format string) ([]byte, error) {
-	// For now, we return WAV natively
-	// For other formats, you'll need to use external tools like ffmpeg
-	// or Go libraries like github.com/hajimehoshi/go-mp3
-
 	if format == "wav" {
 		return wavToBytes(wav, sampleRate), nil
 	}
 
-	// TODO: Implement format conversion or use external encoder
 	return nil, fmt.Errorf("format '%s' not implemented yet. Use 'wav' for now", format)
 }
 
@@ -363,7 +385,7 @@ func wavToBytes(audioData []float32, sampleRate int) []byte {
 		log.Printf("Error creating temp file: %v", err)
 		return nil
 	}
-	defer os.Remove(tmpfile.Name()) // Clean up after reading
+	defer os.Remove(tmpfile.Name())
 	defer tmpfile.Close()
 
 	// Create WAV encoder with the temp file

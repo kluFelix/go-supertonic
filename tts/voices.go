@@ -6,45 +6,38 @@ import (
 	"path/filepath"
 )
 
-// VoiceMapping maps voice names to Supertonic voice style files
+// VoiceMapping maps voice names to Supertonic voice style filenames
+// The actual path will be constructed as [assetsDir]/voice_styles/[filename]
 var VoiceMapping = map[string]string{
-	"M1":  "assets/voice_styles/M1.json",
-	"M2":  "assets/voice_styles/M2.json",
-	"M3":  "assets/voice_styles/M3.json",
-	"M4":  "assets/voice_styles/M4.json",
-	"M5":  "assets/voice_styles/M5.json",
-	"F1":  "assets/voice_styles/F1.json",
-	"F2":  "assets/voice_styles/F2.json",
-	"F3":  "assets/voice_styles/F3.json",
-	"F4":  "assets/voice_styles/F4.json",
-	"F5":  "assets/voice_styles/F5.json",
+	"M1": "M1.json",
+	"M2": "M2.json",
+	"M3": "M3.json",
+	"M4": "M4.json",
+	"M5": "M5.json",
+	"F1": "F1.json",
+	"F2": "F2.json",
+	"F3": "F3.json",
+	"F4": "F4.json",
+	"F5": "F5.json",
 }
 
-// GetVoicePath returns the Supertonic voice style path for an OpenAI voice name
-func GetVoicePath(voiceName string) (string, error) {
-	// First check if the file exists in the default location
-	path, exists := VoiceMapping[voiceName]
+// GetVoicePath returns the full path to a voice style file given the voice name and assets directory
+func GetVoicePath(voiceName string, assetsDir string) (string, error) {
+	filename, exists := VoiceMapping[voiceName]
 	if !exists {
 		return "", fmt.Errorf("unsupported voice: %s. Available voices: %v",
 			voiceName, GetAvailableVoices())
 	}
 
-	// Check if file exists in default location
-	if _, err := os.Stat(path); err == nil {
-		return path, nil
+	path := filepath.Join(assetsDir, "voice_styles", filename)
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("voice style file not found for %s at %s", voiceName, path)
 	}
 
-	// ToDo: make this path configurable
-	// Check if file exists in /var/lib/supertonic
-	altPath := filepath.Join("/var/lib/supertonic", path)
-	if _, err := os.Stat(altPath); err == nil {
-		return altPath, nil
-	}
-
-	return "", fmt.Errorf("voice style file not found for %s in either location", voiceName)
+	return path, nil
 }
 
-// GetAvailableVoices returns list of voice names
+// GetAvailableVoices returns list of available voice names
 func GetAvailableVoices() []string {
 	voices := make([]string, 0, len(VoiceMapping))
 	for voice := range VoiceMapping {

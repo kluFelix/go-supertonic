@@ -83,7 +83,7 @@
             assetsDir = mkOption {
               type = types.path;
               example = "/var/lib/supertonic/assets";
-              description = "Directory containing ONNX models and voice styles";
+              description = "Base directory containing ONNX models (in onnx/ subdirectory) and voice styles (in voice_styles/ subdirectory)";
             };
 
             openFirewall = mkOption {
@@ -146,7 +146,7 @@
 
                   ExecStart = "${cfg.package}/bin/go-supertonic \
                     --port ${toString cfg.port} \
-                    --onnx-dir ${cfg.assetsDir}/onnx \
+                    --assets-dir ${cfg.assetsDir} \
                     --total-step ${toString cfg.totalStep} \
                     --default-speed ${toString cfg.defaultSpeed}";
 

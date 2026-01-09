@@ -855,33 +855,27 @@ func (tts *TextToSpeech) Destroy() {
 	}
 }
 
-// LoadTextToSpeech loads TTS components
-func LoadTextToSpeech(onnxDir string, useGPU bool, cfg Config) (*TextToSpeech, error) {
+// LoadTextToSpeech loads TTS components from the assets directory
+func LoadTextToSpeech(assetsDir string, useGPU bool, cfg Config) (*TextToSpeech, error) {
 	if useGPU {
 		return nil, fmt.Errorf("GPU mode is not supported yet")
 	}
 	fmt.Println("Using CPU for inference")
 
-	// ToDo: make directory configurable
-	// Check if directory exists, if not try alternative location
-	var actualOnnxDir string
-	if _, err := os.Stat(onnxDir); err == nil {
-		actualOnnxDir = onnxDir
-	} else {
-		// Try alternative location
-		altDir := filepath.Join("/var/lib/supertonic/assets", strings.TrimPrefix(onnxDir, "assets/"))
-		if _, err := os.Stat(altDir); err == nil {
-			actualOnnxDir = altDir
-		} else {
-			return nil, fmt.Errorf("ONNX directory not found: %s or %s", onnxDir, altDir)
-		}
+	onnxDir := filepath.Join(assetsDir, "onnx")
+
+	// Verify onnx directory exists (it should, since verifyAssets already checked)
+	if info, err := os.Stat(onnxDir); err != nil {
+		return nil, fmt.Errorf("ONNX subdirectory not found in assets: %s: %w", onnxDir, err)
+	} else if !info.IsDir() {
+		return nil, fmt.Errorf("ONNX path is not a directory: %s", onnxDir)
 	}
 
-	// Load models
-	dpPath := filepath.Join(actualOnnxDir, "duration_predictor.onnx")
-	textEncPath := filepath.Join(actualOnnxDir, "text_encoder.onnx")
-	vectorEstPath := filepath.Join(actualOnnxDir, "vector_estimator.onnx")
-	vocoderPath := filepath.Join(actualOnnxDir, "vocoder.onnx")
+	// Load models from onnx subdirectory
+	dpPath := filepath.Join(onnxDir, "duration_predictor.onnx")
+	textEncPath := filepath.Join(onnxDir, "text_encoder.onnx")
+	vectorEstPath := filepath.Join(onnxDir, "vector_estimator.onnx")
+	vocoderPath := filepath.Join(onnxDir, "vocoder.onnx")
 
 	dpOrt, err := ort.NewDynamicAdvancedSession(dpPath, []string{"text_ids", "style_dp", "text_mask"},
 		[]string{"duration"}, nil)
@@ -906,7 +900,7 @@ func LoadTextToSpeech(onnxDir string, useGPU bool, cfg Config) (*TextToSpeech, e
 	}
 
 	// Load text processor
-	unicodeIndexerPath := filepath.Join(actualOnnxDir, "unicode_indexer.json")
+	unicodeIndexerPath := filepath.Join(onnxDir, "unicode_indexer.json")
 	textProcessor, err := NewUnicodeProcessor(unicodeIndexerPath)
 	if err != nil {
 		return nil, err
@@ -994,17 +988,18 @@ func Timer(name string, fn func() interface{}) interface{} {
 	return result
 }
 
-// LoadCfgs loads configuration from JSON file
-func LoadCfgs(onnxDir string) (Config, error) {
+// LoadCfgs loads configuration from JSON file in the assets directory
+func LoadCfgs(assetsDir string) (Config, error) {
+	onnxDir := filepath.Join(assetsDir, "onnx")
 	cfgPath := filepath.Join(onnxDir, "tts.json")
 	data, err := os.ReadFile(cfgPath)
 	if err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("failed to read config file %s: %w", cfgPath, err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("failed to parse config JSON: %w", err)
 	}
 
 	return cfg, nil
