@@ -288,20 +288,20 @@ func splitSentences(text string) []string {
 	// Go's regexp doesn't support lookbehind, so we use a simpler approach
 	// Split on sentence boundaries and then check if they're abbreviations
 	re := regexp.MustCompile(`([.!?])\s+`)
-	
+
 	// Find all matches
 	matches := re.FindAllStringIndex(text, -1)
 	if len(matches) == 0 {
 		return []string{text}
 	}
-	
+
 	var sentences []string
 	lastEnd := 0
-	
+
 	for _, match := range matches {
 		// Get the text before the punctuation
 		beforePunc := text[lastEnd:match[0]]
-		
+
 		// Check if this ends with an abbreviation
 		isAbbrev := false
 		for _, abbrev := range abbreviations {
@@ -310,23 +310,23 @@ func splitSentences(text string) []string {
 				break
 			}
 		}
-		
+
 		if !isAbbrev {
 			// This is a real sentence boundary
 			sentences = append(sentences, text[lastEnd:match[1]])
 			lastEnd = match[1]
 		}
 	}
-	
+
 	// Add the remaining text
 	if lastEnd < len(text) {
 		sentences = append(sentences, text[lastEnd:])
 	}
-	
+
 	if len(sentences) == 0 {
 		return []string{text}
 	}
-	
+
 	return sentences
 }
 
@@ -693,14 +693,14 @@ func (tts *TextToSpeech) _infer(textList []string, langList []string, style *Sty
 	err := tts.dpOrt.Run(
 		[]ort.Value{textIDsTensor, style.DpTensor, textMaskTensor},
 		dpOutputs,
-	)
+		)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to run duration predictor: %w", err)
 	}
 	durTensor := dpOutputs[0].(*ort.Tensor[float32])
 	defer durTensor.Destroy()
 	durOnnx := durTensor.GetData()
-	
+
 	// Apply speed factor to duration
 	for i := range durOnnx {
 		durOnnx[i] /= speed
@@ -713,7 +713,7 @@ func (tts *TextToSpeech) _infer(textList []string, langList []string, style *Sty
 	err = tts.textEncOrt.Run(
 		[]ort.Value{textIDsTensor2, style.TTLTensor, textMaskTensor},
 		textEncOutputs,
-	)
+		)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to run text encoder: %w", err)
 	}
@@ -752,7 +752,7 @@ func (tts *TextToSpeech) _infer(textList []string, langList []string, style *Sty
 			[]ort.Value{noisyLatentTensor, textEmbTensor, style.TTLTensor, latentMaskTensor, textMaskTensor2,
 				currentStepTensor, totalStepTensor},
 			vectorEstOutputs,
-		)
+			)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to run vector estimator: %w", err)
 		}
@@ -786,7 +786,7 @@ func (tts *TextToSpeech) _infer(textList []string, langList []string, style *Sty
 	err = tts.vocoderOrt.Run(
 		[]ort.Value{finalLatentTensor},
 		vocoderOutputs,
-	)
+		)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to run vocoder: %w", err)
 	}
@@ -805,7 +805,7 @@ func (tts *TextToSpeech) Call(text string, lang string, style *Style, totalStep 
 		maxLen = 120
 	}
 	chunks := chunkText(text, maxLen)
-	
+
 	var wavCat []float32
 	var durCat float32
 
@@ -825,7 +825,7 @@ func (tts *TextToSpeech) Call(text string, lang string, style *Style, totalStep 
 		} else {
 			silenceLen := int(silenceDuration * float32(tts.SampleRate))
 			silence := make([]float32, silenceLen)
-			
+
 			wavCat = append(wavCat, silence...)
 			wavCat = append(wavCat, wavChunk...)
 			durCat += silenceDuration + dur
@@ -862,31 +862,43 @@ func LoadTextToSpeech(onnxDir string, useGPU bool, cfg Config) (*TextToSpeech, e
 	}
 	fmt.Println("Using CPU for inference")
 
+	// ToDo: make directory configurable
+	// Check if directory exists, if not try alternative location
+	var actualOnnxDir string
+	if _, err := os.Stat(onnxDir); err == nil {
+		actualOnnxDir = onnxDir
+	} else {
+		// Try alternative location
+		altDir := filepath.Join("/var/lib/supertonic/assets", strings.TrimPrefix(onnxDir, "assets/"))
+		if _, err := os.Stat(altDir); err == nil {
+			actualOnnxDir = altDir
+		} else {
+			return nil, fmt.Errorf("ONNX directory not found: %s or %s", onnxDir, altDir)
+		}
+	}
+
 	// Load models
-	dpPath := filepath.Join(onnxDir, "duration_predictor.onnx")
-	textEncPath := filepath.Join(onnxDir, "text_encoder.onnx")
-	vectorEstPath := filepath.Join(onnxDir, "vector_estimator.onnx")
-	vocoderPath := filepath.Join(onnxDir, "vocoder.onnx")
+	dpPath := filepath.Join(actualOnnxDir, "duration_predictor.onnx")
+	textEncPath := filepath.Join(actualOnnxDir, "text_encoder.onnx")
+	vectorEstPath := filepath.Join(actualOnnxDir, "vector_estimator.onnx")
+	vocoderPath := filepath.Join(actualOnnxDir, "vocoder.onnx")
 
 	dpOrt, err := ort.NewDynamicAdvancedSession(dpPath, []string{"text_ids", "style_dp", "text_mask"},
 		[]string{"duration"}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load duration predictor: %w", err)
 	}
-
 	textEncOrt, err := ort.NewDynamicAdvancedSession(textEncPath, []string{"text_ids", "style_ttl", "text_mask"},
 		[]string{"text_emb"}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load text encoder: %w", err)
 	}
-
 	vectorEstOrt, err := ort.NewDynamicAdvancedSession(vectorEstPath,
 		[]string{"noisy_latent", "text_emb", "style_ttl", "latent_mask", "text_mask", "current_step", "total_step"},
 		[]string{"denoised_latent"}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load vector estimator: %w", err)
 	}
-
 	vocoderOrt, err := ort.NewDynamicAdvancedSession(vocoderPath, []string{"latent"},
 		[]string{"wav_tts"}, nil)
 	if err != nil {
@@ -894,7 +906,7 @@ func LoadTextToSpeech(onnxDir string, useGPU bool, cfg Config) (*TextToSpeech, e
 	}
 
 	// Load text processor
-	unicodeIndexerPath := filepath.Join(onnxDir, "unicode_indexer.json")
+	unicodeIndexerPath := filepath.Join(actualOnnxDir, "unicode_indexer.json")
 	textProcessor, err := NewUnicodeProcessor(unicodeIndexerPath)
 	if err != nil {
 		return nil, err
@@ -912,7 +924,6 @@ func LoadTextToSpeech(onnxDir string, useGPU bool, cfg Config) (*TextToSpeech, e
 		chunkCompress: cfg.TTL.ChunkCompressFactor,
 		ldim:          cfg.TTL.LatentDim,
 	}
-
 	return textToSpeech, nil
 }
 
@@ -941,7 +952,7 @@ func sanitizeFilename(text string, maxLen int) string {
 	if len(runes) > maxLen {
 		runes = runes[:maxLen]
 	}
-	
+
 	result := make([]rune, 0, len(runes))
 	for _, r := range runes {
 		// unicode.IsLetter matches any Unicode letter, unicode.IsDigit matches any Unicode digit
@@ -958,18 +969,18 @@ func sanitizeFilename(text string, maxLen int) string {
 func extractWavSegment(wav []float32, duration float32, sampleRate int, index int, batchSize int) []float64 {
 	wavLen := int(float64(sampleRate) * float64(duration))
 	wavPerBatch := len(wav) / batchSize
-	
+
 	wavStart := index * wavPerBatch
 	wavEnd := wavStart + wavLen
 	if wavEnd > len(wav) {
 		wavEnd = len(wav)
 	}
-	
+
 	wavOut := make([]float64, wavLen)
 	for j := 0; j < wavLen && wavStart+j < len(wav); j++ {
 		wavOut[j] = float64(wav[wavStart+j])
 	}
-	
+
 	return wavOut
 }
 

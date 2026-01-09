@@ -39,6 +39,9 @@ var config ServerConfig
 
 func main() {
 	// Parse command-line flags
+	// ToDo: make not only the onnx dir but the entire asset dir configurable
+	// ToDo: configure steps for tts-1-hd?
+	// ToDo: speed configurability is redundant - is configurable via POST request
 	flag.StringVar(&config.Port, "port", "8880", "Server port")
 	flag.StringVar(&config.OnnxDir, "onnx-dir", "assets/onnx", "Path to ONNX model directory")
 	flag.BoolVar(&config.UseGPU, "use-gpu", false, "Use GPU for inference")
@@ -77,24 +80,47 @@ func main() {
 
 // verifyAssets checks if required model files exist
 func verifyAssets() error {
+	// Check for files in both locations
+	assetDirs := []string{config.OnnxDir, "/var/lib/supertonic/assets/onnx"}
+
 	requiredFiles := []string{
-		filepath.Join(config.OnnxDir, "duration_predictor.onnx"),
-		filepath.Join(config.OnnxDir, "text_encoder.onnx"),
-		filepath.Join(config.OnnxDir, "vector_estimator.onnx"),
-		filepath.Join(config.OnnxDir, "vocoder.onnx"),
-		filepath.Join(config.OnnxDir, "tts.json"),
-		filepath.Join(config.OnnxDir, "unicode_indexer.json"),
+		"duration_predictor.onnx",
+		"text_encoder.onnx",
+		"vector_estimator.onnx",
+		"vocoder.onnx",
+		"tts.json",
+		"unicode_indexer.json",
 	}
 
+	// Check each required file in both directories
 	for _, file := range requiredFiles {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
+		found := false
+		for _, dir := range assetDirs {
+			fullPath := filepath.Join(dir, file)
+			if _, err := os.Stat(fullPath); err == nil {
+				found = true
+				break
+			}
+		}
+		if !found {
 			return fmt.Errorf("missing required file: %s", file)
 		}
 	}
 
 	// Check voice styles
 	for _, voiceFile := range tts.VoiceMapping {
-		if _, err := os.Stat(voiceFile); os.IsNotExist(err) {
+		// Check if file exists in either location
+		found := false
+		for _, dir := range assetDirs {
+			// Extract just the filename part from the mapping
+			relPath := filepath.Base(voiceFile)
+			fullPath := filepath.Join(dir, "voice_styles", relPath)
+			if _, err := os.Stat(fullPath); err == nil {
+				found = true
+				break
+			}
+		}
+		if !found {
 			log.Printf("Warning: Missing voice style %s", voiceFile)
 		}
 	}
