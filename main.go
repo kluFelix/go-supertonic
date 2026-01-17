@@ -18,11 +18,9 @@ import (
 
 // TTSRequest with OpenAI TTS request structure
 type TTSRequest struct {
-	Model          string  `json:"model"`
 	Input          string  `json:"input"`
 	Voice          string  `json:"voice"`
-	ResponseFormat string  `json:"response_format"` // mp3, opus, aac, flac, wav, pcm
-	Speed          float64 `json:"speed"`           // 0.25 to 4.0
+	Speed          float64 `json:"speed"`
 }
 
 // ServerConfig with API server configuration
@@ -79,7 +77,6 @@ func main() {
 	fmt.Printf("\nServer starting on http://localhost%s\n", addr)
 	fmt.Printf("Endpoint: POST /v1/audio/speech\n")
 	fmt.Printf("Voices: %v\n", tts.GetAvailableVoices())
-	fmt.Printf("Response Formats: wav (native), mp3, opus, aac, flac, pcm\n\n")
 
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
@@ -172,7 +169,6 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 		},
 		"voices":           tts.GetAvailableVoices(),
 		"models":           []string{"tts-1", "tts-1-hd"},
-		"response_formats": []string{"wav", "mp3", "opus", "aac", "flac", "pcm"},
 	}
 	json.NewEncoder(w).Encode(response)
 }
@@ -210,8 +206,8 @@ func handleTTSRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log request
-	log.Printf("TTS Request: voice=%s, model=%s, format=%s, speed=%.2f, text=\"%.50s\"",
-		req.Voice, req.Model, req.ResponseFormat, req.Speed, req.Input)
+	log.Printf("TTS Request: voice=%s, speed=%.2f, text=\"%.50s\"",
+		req.Voice, req.Speed, req.Input)
 
 	// Generate speech
 	audioData, err := generateSpeech(&req)
@@ -221,8 +217,8 @@ func handleTTSRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set appropriate headers
-	setAudioHeaders(w, req.ResponseFormat)
+	// Set wav headers
+	w.Header().Set("Content-Type", "audio/wav")
 
 	// Write audio data
 	w.Write(audioData)
@@ -238,14 +234,6 @@ func validateRequest(req *TTSRequest) error {
 		req.Voice = "F5" // Default voice
 	}
 
-	if req.Model == "" {
-		req.Model = "tts-1" // Default model
-	}
-
-	if req.ResponseFormat == "" {
-		req.ResponseFormat = "wav" // Default format
-	}
-
 	if req.Speed == 0 {
 		req.Speed = config.DefaultSpeed
 	}
@@ -255,23 +243,9 @@ func validateRequest(req *TTSRequest) error {
 		return err
 	}
 
-	// Validate model
-	if req.Model != "tts-1" && req.Model != "tts-1-hd" {
-		return fmt.Errorf("unsupported model: %s (use 'tts-1' or 'tts-1-hd')", req.Model)
-	}
-
 	// Validate speed (OpenAI allows 0.25 to 4.0)
 	if req.Speed < 0.25 || req.Speed > 4.0 {
 		return fmt.Errorf("speed must be between 0.25 and 4.0")
-	}
-
-	// Validate response format
-	validFormats := map[string]bool{
-		"wav": true, "mp3": true, "opus": true,
-		"aac": true, "flac": true, "pcm": true,
-	}
-	if !validFormats[req.ResponseFormat] {
-		return fmt.Errorf("unsupported response format: %s", req.ResponseFormat)
 	}
 
 	return nil
@@ -305,57 +279,23 @@ func generateSpeech(req *TTSRequest) ([]byte, error) {
 	}
 	defer style.Destroy()
 
-	// ToDo: remove hd model option and instead configure steps via http request
-	// Determine quality (model affects steps)
-	totalStep := config.TotalStep
-	if req.Model == "tts-1-hd" {
-		totalStep = 10 // Higher quality for HD model
-	}
 
 	// Generate speech (language detection could be added here)
 	language := "en"
-	fmt.Printf("Generating speech (model=%s, steps=%d, speed=%.2f)...\n",
-		req.Model, totalStep, req.Speed)
+	fmt.Printf("Generating speech (steps=%d, speed=%.2f)...\n",
+		config.TotalStep, req.Speed)
 
 	// Generate using the Call method (handles chunking)
-	wav, duration, err := textToSpeech.Call(req.Input, language, style, totalStep, float32(req.Speed), 0.3)
+	wav, duration, err := textToSpeech.Call(req.Input, language, style, config.TotalStep, float32(req.Speed), 0.3)
 	if err != nil {
 		return nil, fmt.Errorf("speech generation failed: %w", err)
 	}
 
 	// Convert to bytes
-	audioData, err := convertToFormat(wav, textToSpeech.SampleRate, req.ResponseFormat)
-	if err != nil {
-		return nil, fmt.Errorf("format conversion failed: %w", err)
-	}
+	audioData := wavToBytes(wav, textToSpeech.SampleRate)
 
 	log.Printf("Generated audio: %d bytes, duration: %.2fs", len(audioData), duration)
 	return audioData, nil
-}
-
-// setAudioHeaders sets appropriate HTTP headers for audio responses
-func setAudioHeaders(w http.ResponseWriter, format string) {
-	w.Header().Set("Content-Type", getContentType(format))
-}
-
-// getContentType returns MIME type for audio format
-func getContentType(format string) string {
-	switch format {
-	case "mp3":
-		return "audio/mpeg"
-	case "opus":
-		return "audio/opus"
-	case "aac":
-		return "audio/aac"
-	case "flac":
-		return "audio/flac"
-	case "wav":
-		return "audio/wav"
-	case "pcm":
-		return "audio/L16;rate=24000" // 16-bit linear PCM
-	default:
-		return "audio/wav"
-	}
 }
 
 // sendError sends JSON error response
@@ -365,16 +305,6 @@ func sendError(w http.ResponseWriter, message string, status int) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"error": message,
 	})
-}
-
-// ToDo: remove this? Not being used and just adds complexity
-// convertToFormat converts raw audio to requested format
-func convertToFormat(wav []float32, sampleRate int, format string) ([]byte, error) {
-	if format == "wav" {
-		return wavToBytes(wav, sampleRate), nil
-	}
-
-	return nil, fmt.Errorf("format '%s' not implemented yet. Use 'wav' for now", format)
 }
 
 // wavToBytes converts float32 WAV data to WAV file bytes using a temporary file
